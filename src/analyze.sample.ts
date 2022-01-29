@@ -5,5 +5,5 @@ export async function forEachBlockHeader(header: BlockHeader): Promise<void> {
 }
 
 export async function forEachTX(tx: TX): Promise<void> {
-  // do something
+	// do something
 }
