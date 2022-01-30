@@ -1,9 +1,5 @@
-import { BlockHeader, TX } from './interfaces';
+import { Block } from './interfaces';
 
-export async function forEachBlockHeader(header: BlockHeader): Promise<void> {
-	// do something
-}
-
-export async function forEachTX(tx: TX): Promise<void> {
+export async function forEachBlock(block: Block): Promise<void> {
 	// do something
 }

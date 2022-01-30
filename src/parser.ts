@@ -1,8 +1,8 @@
 import { readdirSync, readFileSync } from 'fs';
 import BufferReader = require('buffer-reader');
 import { Hash } from './hash';
-import { BlockHeader, TXin, TXout, TX } from './interfaces';
-import { forEachTX, forEachBlockHeader } from './analyze';
+import { BlockHeader, TXin, TXout, TX, Block } from './interfaces';
+import { forEachBlock, whenFinished } from './analyze';
 
 function nextVarUIntLE(br: BufferReader): number {
 	const n = br.nextUInt8();
@@ -50,7 +50,7 @@ const folder = `${process.env.HOME}/.bitcoin/${datadir[chain]}blocks/`;
 const files = readdirSync(folder).filter(x => x.match(/^blk[0-9]+.dat$/));
 
 const heights: { [key: string]: number } = {};
-const orphans: { [key: string]: BlockHeader } = {};
+const orphans: { [key: string]: Block } = {};
 
 var genesis = true;
 
@@ -82,14 +82,19 @@ async function main() {
 			const size = r.nextUInt32LE();
 
 			// block header
-			await parseBlockHeader(r, size);
+			const block = await parseBlockHeader(r, size);
 
 			// TXs
 			const txs = nextVarUIntLE(r);
 
 			for (var t = 0; t < txs; t++) {
 				const tx = await parseTX(r, buf);
-				await forEachTX(tx);
+				block.transactions.push(tx);
+			}
+
+			if (block.header.height !== undefined) {
+				await forEachBlock(block);
+				await fixOrphans(block.header.hash.string);
 			}
 
 			b++;
@@ -97,9 +102,11 @@ async function main() {
 
 		console.log(`Finished block file, total blocks: ${Object.keys(heights).length}, orphan blocks: ${Object.keys(orphans).length}`);
 	}
+
+	await whenFinished();
 }
 
-async function parseBlockHeader(r: BufferReader, size: number) {
+async function parseBlockHeader(r: BufferReader, size: number): Promise<Block> {
 	const rawHeader = r.nextBuffer(80);
 
 	const h = new BufferReader(rawHeader);
@@ -119,36 +126,41 @@ async function parseBlockHeader(r: BufferReader, size: number) {
 		nonce,
 		height: undefined,
 		hash: Hash.fromData(rawHeader),
-		raw: rawHeader,
-		size: size
-	}
+		raw: rawHeader
+	};
+
+	const block: Block = {
+		header,
+		transactions: [],
+		size
+	};
 
 	if (genesis) {
 		genesis = false;
 		heights[header.hash.string] = 0;
 		header.height = 0;
-		await forEachBlockHeader(header);
 	} else {
 		const prevHeight = heights[prevHash.string];
 		if (prevHeight === undefined) {
-			orphans[header.hash.string] = header;
+			orphans[header.hash.string] = block;
 		} else {
 			heights[header.hash.string] = prevHeight + 1;
 			header.height = prevHeight + 1;
-			await forEachBlockHeader(header);
-			await fixOrphans(header.hash.string);
 		}
 	}
+
+	return block;
 }
 
-async function fixOrphans(hash: string) {
+async function fixOrphans(hash: string): Promise<void> {
 	const height = heights[hash];
-	const deps = Object.values(orphans).filter(x => x.prevHash.string == hash);
+	const deps = Object.values(orphans).filter(x => x.header.prevHash.string == hash);
 	for (var d = 0; d < deps.length; d++) {
-		const header = deps[d];
+		const block = deps[d];
+		const header = block.header;
 		heights[header.hash.string] = height + 1;
 		header.height = height + 1;
-		await forEachBlockHeader(header);
+		await forEachBlock(block);
 		delete orphans[header.hash.string];
 		await fixOrphans(header.hash.string);
 	}
@@ -169,6 +181,7 @@ async function parseTX(r: BufferReader, buf: Buffer): Promise<TX> {
 		const sigScript = nextVarLengthBuffer(r);
 		const sequence = r.nextUInt32LE();
 		vin.push({
+			vin: i,
 			txid,
 			vout,
 			sigScript,
@@ -182,6 +195,7 @@ async function parseTX(r: BufferReader, buf: Buffer): Promise<TX> {
 		const amount = r.nextBuffer(8).readBigInt64LE();
 		const scriptPubKey = nextVarLengthBuffer(r);
 		vout.push({
+			vout: i,
 			amount,
 			scriptPubKey
 		});

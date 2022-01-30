@@ -1,5 +1,11 @@
 import { Hash } from './hash';
 
+export interface Block {
+	header: BlockHeader;
+	transactions: TX[];
+	size: number;
+}
+
 export interface BlockHeader {
 	version: number;
 	prevHash: Hash;
@@ -10,10 +16,10 @@ export interface BlockHeader {
 	height: number;
 	hash: Hash;
 	raw: Buffer;
-	size: number;
 }
 
 export interface TXin {
+	vin: number;
 	txid: Hash;
 	vout: number;
 	sigScript: Buffer;
@@ -22,6 +28,7 @@ export interface TXin {
 }
 
 export interface TXout {
+	vout: number;
 	amount: BigInt;
 	scriptPubKey: Buffer;
 }
