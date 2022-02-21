@@ -1,7 +1,7 @@
 {
   "scripts": {
     "build": "npx tsc",
-    "start": "node dist/parser.js",
+    "start": "node dist/bitcoin-parser/src/parser.js",
     "dev": "npm run build && npm run start"
   },
   "dependencies": {
